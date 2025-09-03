@@ -44,8 +44,8 @@ def main():
     print(f"📊 Test RMSE: {test_rmse:.3f}")
     print(f"📊 Test R²: {test_r2:.3f}")
 
-    # Save model
-    model.save('models/model.pkl')
+    # Save model using joblib.dump() to be consistent with loading
+    joblib.dump(model, 'models/model.pkl')
 
     # Save test data for validation
     test_data = {
