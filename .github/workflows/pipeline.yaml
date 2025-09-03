@@ -77,7 +77,7 @@ jobs:
 
     - name: Train model
       run: |
-        python src/train.py
+        python -m src.train
 
     - name: Validate model performance
       id: validate
