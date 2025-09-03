@@ -5,7 +5,7 @@ from sklearn.datasets import fetch_california_housing
 from sklearn.metrics import mean_squared_error, r2_score
 import joblib
 import os
-from model import HousePriceModel
+from src.model import HousePriceModel  # Fixed import
 
 def main():
     print("🏠 Starting model training...")

@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
 from sklearn.datasets import make_regression
-from model import HousePriceModel
+from src.model import HousePriceModel  # Fixed import
 
 class TestHousePriceModel:
 
