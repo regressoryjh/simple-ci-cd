@@ -1,0 +1,159 @@
+name: ML CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  PYTHON_VERSION: '3.9'
+
+jobs:
+  # Job 1: Code Quality & Testing
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+        pip install -e .  # Install project in editable mode
+        pip install pytest pytest-cov flake8
+        # Optional: Install project in editable mode if setup.py exists
+        if [ -f setup.py ]; then pip install -e .; fi
+
+    - name: Lint with flake8
+      run: |
+        # Stop the build if there are Python syntax errors or undefined names
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        # Exit-zero treats all errors as warnings
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
+    - name: Test with pytest
+      run: |
+        pytest src/test_model.py -v --cov=src --cov-report=xml
+
+    - name: Upload coverage reports
+      uses: codecov/codecov-action@v3
+      with:
+        file: ./coverage.xml
+
+  # Job 2: Model Training & Validation
+  train:
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: Train model
+      run: |
+        python src/train.py
+
+    - name: Validate model performance
+      id: validate
+      run: |
+        python -c "
+        import joblib
+        import numpy as np
+        from sklearn.metrics import mean_squared_error
+
+        # Load model and test data
+        model = joblib.load('models/model.pkl')
+        test_data = joblib.load('models/test_data.pkl')
+        X_test, y_test = test_data['X_test'], test_data['y_test']
+
+        # Predict and calculate RMSE
+        y_pred = model.predict(X_test)
+        rmse = np.sqrt(mean_squared_error(y_test, y_pred))
+        print(f'Model RMSE: {rmse:.2f}')
+
+        # Set output for next steps
+        with open('model_metrics.txt', 'w') as f:
+            f.write(f'RMSE: {rmse:.2f}')
+
+        # Fail if RMSE is too high
+        if rmse > 10.0:
+            print('❌ Model performance is below threshold!')
+            exit(1)
+        else:
+            print('✅ Model performance meets requirements!')
+        "
+
+    - name: Upload model artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: ml-model-${{ github.sha }}
+        path: |
+          models/model.pkl
+          models/test_data.pkl
+          model_metrics.txt
+        retention-days: 30
+
+  # Job 3: Deploy (hanya pada push ke main)
+  deploy:
+    runs-on: ubuntu-latest
+    needs: [test, train]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    - name: Download model artifacts
+      uses: actions/download-artifact@v3
+      with:
+        name: ml-model-${{ github.sha }}
+        path: ./artifacts
+
+    - name: Deploy model (simulation)
+      run: |
+        echo "🚀 Deploying model to production..."
+        echo "Model files:"
+        ls -la ./artifacts/
+
+        # Simulasi deployment (dalam praktik nyata, ini bisa ke:)
+        # - AWS S3/SageMaker
+        # - Google Cloud ML
+        # - Azure ML
+        # - Docker registry
+        # - Kubernetes cluster
+
+        echo "✅ Model deployed successfully!"
+        echo "Model version: ${{ github.sha }}"
+
+    - name: Create deployment status
+      run: |
+        echo "## 🎉 Deployment Summary" >> $GITHUB_STEP_SUMMARY
+        echo "- **Status**: ✅ Success" >> $GITHUB_STEP_SUMMARY
+        echo "- **Model Version**: \`${{ github.sha }}\`" >> $GITHUB_STEP_SUMMARY
+        echo "- **Timestamp**: $(date)" >> $GITHUB_STEP_SUMMARY
